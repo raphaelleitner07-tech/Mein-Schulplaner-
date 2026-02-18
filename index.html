@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>Mein Schulplaner 💜</title>
+
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
+<style>
+body{
+    margin:0;
+    font-family:Arial;
+    background:linear-gradient(135deg,#a18cd1,#fbc2eb);
+    display:flex;
+    justify-content:center;
+    padding-top:40px;
+}
+
+.container{
+    background:white;
+    width:95%;
+    max-width:1000px;
+    padding:30px;
+    border-radius:20px;
+    box-shadow:0 15px 40px rgba(0,0,0,0.2);
+}
+
+h1{text-align:center;}
+
+.top-bar{
+    display:flex;
+    justify-content:space-between;
+    margin-bottom:15px;
+}
+
+.input-area{
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+    justify-content:center;
+    margin-bottom:20px;
+}
+
+button{
+    padding:8px 12px;
+    border-radius:8px;
+    border:none;
+    cursor:pointer;
+    background:#6a11cb;
+    color:white;
+}
+
+button:hover{background:#2575fc;}
+
+.day{
+    background:#f3f6ff;
+    padding:10px;
+    margin:10px 0;
+    border-radius:10px;
+}
+
+.task{
+    display:flex;
+    justify-content:space-between;
+    background:white;
+    padding:6px;
+    margin:5px 0;
+    border-radius:8px;
+}
+
+/* Karteikarten Modal */
+#flashModal{
+    display:none;
+    position:fixed;
+    top:0; left:0;
+    width:100%;
+    height:100%;
+    background:rgba(0,0,0,0.4);
+    justify-content:center;
+    align-items:center;
+}
+
+.flashBox{
+    background:white;
+    padding:20px;
+    border-radius:15px;
+    width:90%;
+    max-width:600px;
+    text-align:center;
+}
+
+.card{
+    background:#fff3cd;
+    padding:20px;
+    border-radius:15px;
+    margin:15px 0;
+    cursor:pointer;
+    min-height:80px;
+    font-weight:bold;
+}
+
+.closeBtn{
+    background:red;
+    color:white;
+    border:none;
+    padding:5px 10px;
+    border-radius:6px;
+}
+</style>
+</head>
+<body>
+
+<div class="container">
+
+<h1>📚 Intelligenter Schulplaner 💜</h1>
+
+<div class="top-bar">
+    <button onclick="document.getElementById('imgUpload').click()">📇 Karteikarten</button>
+</div>
+
+<div class="input-area">
+    <input type="text" id="fach" placeholder="Fach">
+    <input type="number" id="seiten" placeholder="Seiten">
+    <input type="date" id="abgabe">
+
+    <select id="schwierigkeit">
+        <option value="leicht">😊 Leicht</option>
+        <option value="schwer">😰 Schwer</option>
+    </select>
+
+    <button onclick="planErstellen()">Hinzufügen</button>
+</div>
+
+<div id="liste"></div>
+
+</div>
+
+<input type="file" id="imgUpload" accept="image/*" style="display:none">
+
+<!-- Karteikarten Modal -->
+<div id="flashModal">
+    <div class="flashBox">
+        <button class="closeBtn" onclick="closeFlash()">X</button>
+        <h3>Karteikarten</h3>
+        <div id="flashContent"></div>
+    </div>
+</div>
+
+<script>
+
+let aufgaben = JSON.parse(localStorage.getItem("aufgaben")) || [];
+
+function planErstellen(){
+    let fach=document.getElementById("fach").value;
+    let seiten=parseInt(document.getElementById("seiten").value);
+    let abgabe=document.getElementById("abgabe").value;
+    let schwierigkeit=document.getElementById("schwierigkeit").value;
+
+    if(!fach || !seiten || !abgabe){
+        alert("Bitte alles ausfüllen 💕");
+        return;
+    }
+
+    aufgaben.push({fach,seiten,abgabe:new Date(abgabe),schwierigkeit});
+    localStorage.setItem("aufgaben",JSON.stringify(aufgaben));
+
+    zeigeAufgaben();
+}
+
+function zeigeAufgaben(){
+    let liste=document.getElementById("liste");
+    liste.innerHTML="";
+
+    let heute=new Date();
+    heute.setHours(0,0,0,0);
+
+    let tageMap={};
+
+    aufgaben.forEach((a,index)=>{
+
+        let end=new Date(a.abgabe);
+        end.setHours(0,0,0,0);
+
+        let gesamtTage=Math.floor((end-heute)/(1000*60*60*24));
+        if(gesamtTage < 1) gesamtTage = 1;
+
+        let startTagOffset;
+        let lernTage;
+
+        if(a.schwierigkeit === "leicht"){
+            startTagOffset = Math.floor(gesamtTage/2);
+            lernTage = Math.max(1, Math.floor(gesamtTage/2));
+        }else{
+            startTagOffset = 0;
+            lernTage = Math.max(1, Math.floor(gesamtTage*0.75));
+        }
+
+        let perTag = Math.ceil(a.seiten / lernTage);
+        let seitenRest = a.seiten;
+
+        for(let i=0; i<lernTage; i++){
+            if(seitenRest <= 0) break;
+
+            let d=new Date(heute);
+            d.setDate(heute.getDate() + startTagOffset + i);
+
+            if(d > end) break;
+
+            let key=d.toLocaleDateString();
+            if(!tageMap[key]) tageMap[key]=[];
+
+            let heuteSeiten=Math.min(perTag,seitenRest);
+            seitenRest -= heuteSeiten;
+
+            tageMap[key].push({
+                text:heuteSeiten+" Seite(n) "+a.fach+" ("+a.schwierigkeit+")",
+                index:index
+            });
+        }
+    });
+
+    Object.keys(tageMap).sort((a,b)=>{
+        return new Date(a.split('.').reverse().join('-'))-
+               new Date(b.split('.').reverse().join('-'));
+    }).forEach(tag=>{
+
+        let day=document.createElement("div");
+        day.className="day";
+        day.innerHTML="<h3>"+tag+"</h3>";
+
+        tageMap[tag].forEach(eintrag=>{
+            let task=document.createElement("div");
+            task.className="task";
+
+            let span=document.createElement("span");
+            span.innerText=eintrag.text;
+
+            let btn=document.createElement("button");
+            btn.innerText="✔";
+
+            btn.onclick=function(){
+                aufgaben.splice(eintrag.index,1);
+                localStorage.setItem("aufgaben",JSON.stringify(aufgaben));
+                zeigeAufgaben();
+            };
+
+            task.appendChild(span);
+            task.appendChild(btn);
+            day.appendChild(task);
+        });
+
+        liste.appendChild(day);
+    });
+}
+
+zeigeAufgaben();
+
+/* ================= Karteikarten ================= */
+
+let cards=[],currentCard=0,showingAnswer=false;
+
+document.getElementById("imgUpload").addEventListener("change",function(e){
+    let file=e.target.files[0];
+    if(!file) return;
+
+    document.getElementById("flashModal").style.display="flex";
+    document.getElementById("flashContent").innerHTML="⏳ Text wird erkannt...";
+
+    Tesseract.recognize(file,'deu').then(({data:{text}})=>{
+        let saetze=text.match(/[^.!?]+[.!?]+/g) || [text];
+        cards=saetze.map(s=>({frage:"Was bedeutet?",antwort:s.trim()}));
+        currentCard=0;
+        showingAnswer=false;
+        zeigeKarte();
+    });
+});
+
+function zeigeKarte(){
+    if(cards.length==0) return;
+
+    let box=document.getElementById("flashContent");
+    box.innerHTML="";
+
+    let card=document.createElement("div");
+    card.className="card";
+    card.innerText=showingAnswer?cards[currentCard].antwort:cards[currentCard].frage;
+
+    card.onclick=function(){
+        showingAnswer=!showingAnswer;
+        zeigeKarte();
+    };
+
+    box.appendChild(card);
+
+    let next=document.createElement("button");
+    next.innerText="Nächste";
+    next.onclick=function(){
+        currentCard=(currentCard+1)%cards.length;
+        showingAnswer=false;
+        zeigeKarte();
+    };
+
+    box.appendChild(next);
+}
+
+function closeFlash(){
+    document.getElementById("flashModal").style.display="none";
+}
+
+</script>
+
+</body>
+</html>
